@@ -439,8 +439,8 @@ body {
   position: relative;
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 50px;
+  height: 50px;
   margin: 12px;
   border-radius: 50%;
   background: #fffdf8;
@@ -469,15 +469,22 @@ body {
 }
 
 .bus-marker-emoji {
-  position: relative;
-  /* Emoji glyph sits optically low; nudge up so wheels clear the ring. */
-  top: -3px;
   z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  transform-origin: center center;
+  /* scaleX first (mirror near heading 90), then rotate toward travel. */
+  transform: rotate(var(--bus-angle)) scaleX(var(--bus-flip));
+}
+
+.bus-marker-glyph {
   display: block;
   font-size: 28px;
   line-height: 1;
-  /* scaleX first (mirror near heading 90), then rotate toward travel. */
-  transform: rotate(var(--bus-angle)) scaleX(var(--bus-flip));
+  /* Optical nudge in bus-local space so wheels clear the ring at all angles. */
+  transform: translateY(-2px);
 }
 
 .leaflet-popup-content {

@@ -123,9 +123,9 @@ function busIcon(color: string, heading: number) {
   const { angle, flip } = busOrientation(h);
   return L.divIcon({
     className: "bus-marker",
-    iconSize: [66, 66],
-    iconAnchor: [33, 33],
-    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${h}deg;--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true"><span class="bus-marker-dir"><span class="bus-marker-arrow"></span></span><span class="bus-marker-emoji">🚌</span></div>`,
+    iconSize: [74, 74],
+    iconAnchor: [37, 37],
+    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${h}deg;--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true"><span class="bus-marker-dir"><span class="bus-marker-arrow"></span></span><span class="bus-marker-emoji"><span class="bus-marker-glyph">🚌</span></span></div>`,
   });
 }
 
