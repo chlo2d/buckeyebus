@@ -438,18 +438,11 @@ body {
 .bus-marker-inner {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #fffdf8;
-  border: 2px solid var(--bus-color);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
-}
-
-.bus-marker-emoji {
-  display: block;
-  font-size: 16px;
+  width: 40px;
+  height: 40px;
+  font-size: 32px;
   line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   /* 🚌 faces east by default; rotate + mirror westbound so it stays upright. */
   transform: rotate(var(--bus-angle)) scaleX(var(--bus-flip));
 }

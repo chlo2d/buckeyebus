@@ -108,13 +108,13 @@ function busOrientation(heading: number) {
   return { angle, flip };
 }
 
-function busIcon(color: string, heading: number) {
+function busIcon(heading: number) {
   const { angle, flip } = busOrientation(heading);
   return L.divIcon({
     className: "bus-marker",
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}"><span class="bus-marker-emoji" aria-hidden="true">🚌</span></div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    html: `<div class="bus-marker-inner" style="--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true">🚌</div>`,
   });
 }
 
@@ -326,13 +326,11 @@ export function BusMap({
         ))}
 
       {vehicles.map((vehicle) => {
-        const route = routeByCode.get(vehicle.routeCode);
-        const color = route?.color ?? "#ba0c2f";
         return (
           <Marker
             key={vehicle.bus_id || vehicle.id}
             position={[vehicle.latitude, vehicle.longitude]}
-            icon={busIcon(color, vehicle.heading || 0)}
+            icon={busIcon(vehicle.heading || 0)}
           >
             <Popup>
               <strong>{vehicle.id}</strong>
