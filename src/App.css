@@ -439,9 +439,9 @@ body {
   position: relative;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  margin: 4px;
+  width: 42px;
+  height: 42px;
+  margin: 8px;
   border-radius: 50%;
   background: #fffdf8;
   border: 2.5px solid var(--bus-color);
@@ -450,7 +450,7 @@ body {
 
 .bus-marker-dir {
   position: absolute;
-  inset: -7px;
+  inset: -10px;
   transform: rotate(var(--bus-heading));
   pointer-events: none;
 }
@@ -461,11 +461,11 @@ body {
   left: 50%;
   width: 0;
   height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 9px solid var(--bus-color);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 12px solid var(--bus-color);
   transform: translateX(-50%);
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
 }
 
 .bus-marker-emoji {
@@ -474,7 +474,7 @@ body {
   display: block;
   font-size: 28px;
   line-height: 1;
-  /* Rotate + mirror westbound so the bus stays upright and faces travel. */
+  /* scaleX first (mirror near heading 90), then rotate toward travel. */
   transform: rotate(var(--bus-angle)) scaleX(var(--bus-flip));
 }
 
