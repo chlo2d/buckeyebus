@@ -99,12 +99,33 @@ function MapClickHandler({
   return null;
 }
 
+/** Shortest angular distance between two headings, in degrees. */
+function headingDistance(a: number, b: number) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+/**
+ * Orient a 🚌 along heading (0° = north).
+ * Unflipped emoji faces left→right, treated as heading 270.
+ * Within 90° of 270: rotate only. Within 90° of 90: mirror, then rotate.
+ */
+function busOrientation(heading: number) {
+  const h = ((heading % 360) + 360) % 360;
+  const flip = headingDistance(h, 90) < headingDistance(h, 270);
+  // Unflipped faces 270; after scaleX(-1) it faces 90.
+  const angle = flip ? h - 90 : h - 270;
+  return { angle, flip };
+}
+
 function busIcon(color: string, heading: number) {
+  const h = ((heading % 360) + 360) % 360;
+  const { angle, flip } = busOrientation(h);
   return L.divIcon({
     className: "bus-marker",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${heading}deg"></div>`,
+    iconSize: [74, 74],
+    iconAnchor: [37, 37],
+    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${h}deg;--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true"><span class="bus-marker-dir"><span class="bus-marker-arrow"></span></span><span class="bus-marker-emoji"><span class="bus-marker-glyph">🚌</span></span></div>`,
   });
 }
 
