@@ -441,7 +441,7 @@ body {
   place-items: center;
   width: 42px;
   height: 42px;
-  margin: 8px;
+  margin: 12px;
   border-radius: 50%;
   background: #fffdf8;
   border: 2.5px solid var(--bus-color);
@@ -450,7 +450,7 @@ body {
 
 .bus-marker-dir {
   position: absolute;
-  inset: -10px;
+  inset: -12px;
   transform: rotate(var(--bus-heading));
   pointer-events: none;
 }
@@ -461,15 +461,17 @@ body {
   left: 50%;
   width: 0;
   height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 12px solid var(--bus-color);
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 15px solid var(--bus-color);
   transform: translateX(-50%);
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
 }
 
 .bus-marker-emoji {
   position: relative;
+  /* Emoji glyph sits optically low; nudge up so wheels clear the ring. */
+  top: -3px;
   z-index: 1;
   display: block;
   font-size: 28px;

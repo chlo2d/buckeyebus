@@ -123,8 +123,8 @@ function busIcon(color: string, heading: number) {
   const { angle, flip } = busOrientation(h);
   return L.divIcon({
     className: "bus-marker",
-    iconSize: [58, 58],
-    iconAnchor: [29, 29],
+    iconSize: [66, 66],
+    iconAnchor: [33, 33],
     html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${h}deg;--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true"><span class="bus-marker-dir"><span class="bus-marker-arrow"></span></span><span class="bus-marker-emoji">🚌</span></div>`,
   });
 }
