@@ -5,9 +5,6 @@ interface RouteListProps {
   selected: Set<string>;
   onToggle: (code: string) => void;
   onSelectOnly: (code: string) => void;
-  loading: boolean;
-  error: string | null;
-  lastUpdated: Date | null;
 }
 
 export function RouteList({
@@ -15,32 +12,10 @@ export function RouteList({
   selected,
   onToggle,
   onSelectOnly,
-  loading,
-  error,
-  lastUpdated,
 }: RouteListProps) {
   return (
-    <aside className="sidebar">
-      <header className="sidebar-header">
-        <p className="brand">BuckeyeBus</p>
-        <p className="tagline">Live campus transit</p>
-      </header>
-
-      <div className="sidebar-status">
-        {loading && <span>Loading routes…</span>}
-        {error && <span className="error">{error}</span>}
-        {!loading && !error && lastUpdated && (
-          <span>
-            Updated{" "}
-            {lastUpdated.toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-              second: "2-digit",
-            })}
-          </span>
-        )}
-      </div>
-
+    <section className="routes-section">
+      <h2 className="routes-heading">Routes</h2>
       <ul className="route-list">
         {routes.map((route) => {
           const active = selected.has(route.code);
@@ -67,8 +42,7 @@ export function RouteList({
           );
         })}
       </ul>
-
       <p className="hint">Click to toggle · double-click for only that route</p>
-    </aside>
+    </section>
   );
 }
