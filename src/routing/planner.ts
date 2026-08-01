@@ -18,6 +18,13 @@ import {
 
 export type TripPoint =
   | { kind: "stop"; stopId: string; label: string; lat: number; lng: number }
+  | {
+      kind: "building";
+      buildingId: string;
+      label: string;
+      lat: number;
+      lng: number;
+    }
   | { kind: "map"; label: string; lat: number; lng: number };
 
 export type LegKind = "walk" | "ride";
@@ -96,6 +103,8 @@ function snapOrKeep(
   graph: TransitGraph,
 ): TripPoint {
   if (point.kind === "stop" && graph.stops.has(point.stopId)) return point;
+  if (point.kind === "building") return point;
+
   const near = [...graph.stops.values()]
     .map((stop) => ({
       stop,
@@ -640,6 +649,21 @@ export function tripPointFromStop(stop: StopNode): TripPoint {
     label: stop.name,
     lat: stop.lat,
     lng: stop.lng,
+  };
+}
+
+export function tripPointFromBuilding(building: {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}): TripPoint {
+  return {
+    kind: "building",
+    buildingId: building.id,
+    label: building.name,
+    lat: building.lat,
+    lng: building.lng,
   };
 }
 

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { CampusBuilding } from "../api/buildings";
 import type { StopNode } from "../routing/graph";
 import {
   formatMinutes,
@@ -6,13 +7,21 @@ import {
   type TripPoint,
 } from "../routing/planner";
 
+export type PlaceSuggestion =
+  | { kind: "stop"; stop: StopNode }
+  | { kind: "building"; building: CampusBuilding };
+
 interface TripPlannerProps {
   stops: StopNode[];
+  buildings: CampusBuilding[];
   origin: TripPoint | null;
   destination: TripPoint | null;
   activeField: "origin" | "destination";
   onActiveFieldChange: (field: "origin" | "destination") => void;
-  onPickStop: (field: "origin" | "destination", stop: StopNode) => void;
+  onPickPlace: (
+    field: "origin" | "destination",
+    place: PlaceSuggestion,
+  ) => void;
   onClearPoint: (field: "origin" | "destination") => void;
   onSwap: () => void;
   itineraries: Itinerary[];
@@ -23,11 +32,12 @@ interface TripPlannerProps {
 
 export function TripPlanner({
   stops,
+  buildings,
   origin,
   destination,
   activeField,
   onActiveFieldChange,
-  onPickStop,
+  onPickPlace,
   onClearPoint,
   onSwap,
   itineraries,
@@ -39,23 +49,23 @@ export function TripPlanner({
   const [destQuery, setDestQuery] = useState("");
 
   const originMatches = useMemo(
-    () => filterStops(stops, originQuery),
-    [stops, originQuery],
+    () => searchPlaces(stops, buildings, originQuery),
+    [stops, buildings, originQuery],
   );
   const destMatches = useMemo(
-    () => filterStops(stops, destQuery),
-    [stops, destQuery],
+    () => searchPlaces(stops, buildings, destQuery),
+    [stops, buildings, destQuery],
   );
 
   return (
     <section className="trip-planner">
       <div className="trip-planner-heading">
         <h2>Plan trip</h2>
-        <p>Search a stop or click the map</p>
+        <p>Search a stop or building, or click the map</p>
       </div>
 
       <div className="trip-fields">
-        <StopField
+        <PlaceField
           label="From"
           active={activeField === "origin"}
           value={origin}
@@ -63,8 +73,8 @@ export function TripPlanner({
           matches={originMatches}
           onFocus={() => onActiveFieldChange("origin")}
           onQueryChange={setOriginQuery}
-          onPick={(stop) => {
-            onPickStop("origin", stop);
+          onPick={(place) => {
+            onPickPlace("origin", place);
             setOriginQuery("");
           }}
           onClear={() => {
@@ -77,7 +87,7 @@ export function TripPlanner({
           Swap
         </button>
 
-        <StopField
+        <PlaceField
           label="To"
           active={activeField === "destination"}
           value={destination}
@@ -85,8 +95,8 @@ export function TripPlanner({
           matches={destMatches}
           onFocus={() => onActiveFieldChange("destination")}
           onQueryChange={setDestQuery}
-          onPick={(stop) => {
-            onPickStop("destination", stop);
+          onPick={(place) => {
+            onPickPlace("destination", place);
             setDestQuery("");
           }}
           onClear={() => {
@@ -167,19 +177,84 @@ export function TripPlanner({
   );
 }
 
-function filterStops(stops: StopNode[], query: string): StopNode[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  return stops
-    .filter(
-      (stop) =>
-        stop.name.toLowerCase().includes(q) ||
-        stop.routeCodes.some((code) => code.toLowerCase().includes(q)),
+function searchPlaces(
+  stops: StopNode[],
+  buildings: CampusBuilding[],
+  query: string,
+): PlaceSuggestion[] {
+  const raw = query.trim().toLowerCase();
+  if (raw.length < 2) return [];
+  const q = BUILDING_ALIASES[raw] ?? raw;
+
+  type Ranked =
+    | { kind: "stop"; stop: StopNode; score: number }
+    | { kind: "building"; building: CampusBuilding; score: number };
+
+  const ranked: Ranked[] = [];
+
+  for (const stop of stops) {
+    const routeHit = stop.routeCodes.some((code) =>
+      code.toLowerCase().includes(raw),
+    );
+    const score = scoreMatch(q, stop.name.toLowerCase(), null, null, routeHit);
+    if (score != null) ranked.push({ kind: "stop", stop, score });
+  }
+
+  for (const building of buildings) {
+    const score = scoreMatch(
+      q,
+      building.name.toLowerCase(),
+      building.abbreviation?.toLowerCase() ?? null,
+      building.code?.toLowerCase() ?? null,
+      false,
+    );
+    if (score != null) ranked.push({ kind: "building", building, score });
+  }
+
+  return ranked
+    .sort(
+      (a, b) =>
+        a.score - b.score ||
+        (a.kind === "stop" ? a.stop.name : a.building.name).localeCompare(
+          b.kind === "stop" ? b.stop.name : b.building.name,
+        ),
     )
-    .slice(0, 8);
+    .slice(0, 10)
+    .map((item) =>
+      item.kind === "stop"
+        ? { kind: "stop" as const, stop: item.stop }
+        : { kind: "building" as const, building: item.building },
+    );
 }
 
-function StopField({
+const BUILDING_ALIASES: Record<string, string> = {
+  rpac: "recreation and physical activity center",
+  "the rpac": "recreation and physical activity center",
+  "ohio union": "ohio union",
+  union: "ohio union",
+};
+
+/** Lower score is better. */
+function scoreMatch(
+  query: string,
+  name: string,
+  abbreviation: string | null,
+  code: string | null,
+  extraHit: boolean,
+): number | null {
+  if (abbreviation === query || code === query) return 0;
+  if (name === query) return 1;
+  if (abbreviation?.startsWith(query) || code?.startsWith(query)) return 2;
+  if (name.startsWith(query)) return 3;
+  if (name.includes(query)) return 4;
+  if (abbreviation?.includes(query) || code?.includes(query)) return 5;
+  if (extraHit) return 6;
+  const words = name.split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.some((w) => w.startsWith(query))) return 3.5;
+  return null;
+}
+
+function PlaceField({
   label,
   active,
   value,
@@ -194,10 +269,10 @@ function StopField({
   active: boolean;
   value: TripPoint | null;
   query: string;
-  matches: StopNode[];
+  matches: PlaceSuggestion[];
   onFocus: () => void;
   onQueryChange: (q: string) => void;
-  onPick: (stop: StopNode) => void;
+  onPick: (place: PlaceSuggestion) => void;
   onClear: () => void;
 }) {
   return (
@@ -208,7 +283,7 @@ function StopField({
           <input
             type="text"
             value={query}
-            placeholder={value?.label ?? "Stop or map click"}
+            placeholder={value?.label ?? "Stop, building, or map click"}
             onFocus={onFocus}
             onChange={(e) => onQueryChange(e.target.value)}
           />
@@ -219,22 +294,42 @@ function StopField({
           </button>
         )}
       </div>
-      {value && !query && (
-        <p className="trip-selected">{value.label}</p>
-      )}
+      {value && !query && <p className="trip-selected">{value.label}</p>}
       {query && matches.length > 0 && (
         <ul className="stop-suggestions">
-          {matches.map((stop) => (
-            <li key={stop.id}>
-              <button type="button" onClick={() => onPick(stop)}>
-                <span className="suggestion-name">{stop.name}</span>
-                <span className="suggestion-routes">
-                  {stop.routeCodes.join(" · ")}
-                </span>
-              </button>
-            </li>
-          ))}
+          {matches.map((place) =>
+            place.kind === "stop" ? (
+              <li key={`stop-${place.stop.id}`}>
+                <button type="button" onClick={() => onPick(place)}>
+                  <span className="suggestion-name">{place.stop.name}</span>
+                  <span className="suggestion-routes">
+                    Bus stop · {place.stop.routeCodes.join(" · ")}
+                  </span>
+                </button>
+              </li>
+            ) : (
+              <li key={`building-${place.building.id}`}>
+                <button type="button" onClick={() => onPick(place)}>
+                  <span className="suggestion-name">{place.building.name}</span>
+                  <span className="suggestion-routes">
+                    Building
+                    {place.building.abbreviation
+                      ? ` · ${place.building.abbreviation}`
+                      : place.building.code
+                        ? ` · ${place.building.code}`
+                        : ""}
+                    {place.building.address
+                      ? ` · ${place.building.address}`
+                      : ""}
+                  </span>
+                </button>
+              </li>
+            ),
+          )}
         </ul>
+      )}
+      {query.trim().length >= 2 && matches.length === 0 && (
+        <p className="trip-status">No matching stops or buildings</p>
       )}
     </div>
   );

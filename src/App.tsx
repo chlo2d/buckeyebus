@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BusMap } from "./components/BusMap";
 import { RouteList } from "./components/RouteList";
-import { TripPlanner } from "./components/TripPlanner";
+import {
+  TripPlanner,
+  type PlaceSuggestion,
+} from "./components/TripPlanner";
+import { fetchCampusBuildings, type CampusBuilding } from "./api/buildings";
 import { fetchRoute, fetchRoutes, fetchVehicles } from "./api/bus";
 import type { RouteDetail, RouteSummary, Vehicle } from "./api/types";
 import {
@@ -13,12 +17,12 @@ import {
 } from "./routing/graph";
 import {
   planTrips,
+  tripPointFromBuilding,
   tripPointFromMap,
   tripPointFromStop,
   type Itinerary,
   type TripPoint,
 } from "./routing/planner";
-import type { StopNode } from "./routing/graph";
 import "leaflet/dist/leaflet.css";
 import "./App.css";
 
@@ -29,6 +33,7 @@ function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [details, setDetails] = useState<Record<string, RouteDetail>>({});
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [buildings, setBuildings] = useState<CampusBuilding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -48,11 +53,15 @@ function App() {
     (async () => {
       try {
         setLoading(true);
-        const data = await fetchRoutes();
+        const [data, campusBuildings] = await Promise.all([
+          fetchRoutes(),
+          fetchCampusBuildings(),
+        ]);
         if (cancelled) return;
 
         const list = data.routes;
         setRoutes(list);
+        setBuildings(campusBuildings);
         setSelected(
           new Set(
             list
@@ -178,9 +187,13 @@ function App() {
     [origin, destination],
   );
 
-  const onPickStop = useCallback(
-    (field: "origin" | "destination", stop: StopNode) => {
-      assignPoint(field, tripPointFromStop(stop));
+  const onPickPlace = useCallback(
+    (field: "origin" | "destination", place: PlaceSuggestion) => {
+      if (place.kind === "stop") {
+        assignPoint(field, tripPointFromStop(place.stop));
+      } else {
+        assignPoint(field, tripPointFromBuilding(place.building));
+      }
     },
     [assignPoint],
   );
@@ -237,11 +250,12 @@ function App() {
 
         <TripPlanner
           stops={stops}
+          buildings={buildings}
           origin={origin}
           destination={destination}
           activeField={activeField}
           onActiveFieldChange={setActiveField}
-          onPickStop={onPickStop}
+          onPickPlace={onPickPlace}
           onClearPoint={onClearPoint}
           onSwap={onSwap}
           itineraries={itineraries}
