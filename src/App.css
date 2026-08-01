@@ -1,0 +1,219 @@
+:root {
+  --scarlet: #ba0c2f;
+  --scarlet-deep: #8b0a22;
+  --ink: #1c1c1c;
+  --ink-soft: #4a4a4a;
+  --paper: #f7f5f2;
+  --paper-raised: #fffcf8;
+  --line: rgba(28, 28, 28, 0.12);
+  --shadow: 0 12px 40px rgba(28, 28, 28, 0.12);
+  --sidebar-width: 280px;
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino,
+    serif;
+  --font-body: "Source Sans 3", "Source Sans Pro", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(186, 12, 47, 0.08), transparent 55%),
+    linear-gradient(160deg, #ebe6df 0%, var(--paper) 45%, #e4e9ec 100%);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  width: 100%;
+  height: 100%;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1rem 1rem;
+  background: color-mix(in srgb, var(--paper-raised) 88%, transparent);
+  border-right: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  z-index: 2;
+}
+
+.sidebar-header {
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--scarlet);
+  line-height: 1.05;
+}
+
+.tagline {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.sidebar-status {
+  min-height: 1.25rem;
+  padding: 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.sidebar-status .error {
+  color: var(--scarlet-deep);
+}
+
+.route-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.route-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.route-item:hover {
+  background: rgba(186, 12, 47, 0.06);
+}
+
+.route-item.active {
+  background: var(--paper-raised);
+  border-color: var(--line);
+  box-shadow: var(--shadow);
+}
+
+.route-swatch {
+  width: 10px;
+  height: 28px;
+  border-radius: 999px;
+}
+
+.route-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.route-code {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.route-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.hint {
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.map-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.bus-map {
+  width: 100%;
+  height: 100%;
+  background: #d9dde1;
+}
+
+.bus-map .leaflet-control-attribution {
+  font-size: 10px;
+  background: rgba(255, 252, 248, 0.85);
+}
+
+.bus-marker {
+  background: transparent;
+  border: none;
+}
+
+.bus-marker-inner {
+  width: 28px;
+  height: 28px;
+  transform: rotate(var(--bus-heading));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+
+.bus-marker-inner::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  margin: 2px auto 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 18px solid var(--bus-color);
+}
+
+.leaflet-popup-content {
+  margin: 0.6rem 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .sidebar {
+    max-height: 42vh;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}
