@@ -99,12 +99,22 @@ function MapClickHandler({
   return null;
 }
 
+/** Orient a right-facing 🚌 so it points along heading (0° = north). */
+function busOrientation(heading: number) {
+  const h = ((heading % 360) + 360) % 360;
+  // Mirror when westbound so the emoji stays upright instead of upside-down.
+  const flip = h > 180;
+  const angle = flip ? h - 270 : h - 90;
+  return { angle, flip };
+}
+
 function busIcon(color: string, heading: number) {
+  const { angle, flip } = busOrientation(heading);
   return L.divIcon({
     className: "bus-marker",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${heading}deg"></div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}"><span class="bus-marker-emoji" aria-hidden="true">🚌</span></div>`,
   });
 }
 

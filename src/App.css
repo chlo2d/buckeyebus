@@ -436,21 +436,22 @@ body {
 }
 
 .bus-marker-inner {
-  width: 28px;
-  height: 28px;
-  transform: rotate(var(--bus-heading));
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 2px solid var(--bus-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
 }
 
-.bus-marker-inner::before {
-  content: "";
+.bus-marker-emoji {
   display: block;
-  width: 0;
-  height: 0;
-  margin: 2px auto 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 18px solid var(--bus-color);
+  font-size: 16px;
+  line-height: 1;
+  /* 🚌 faces east by default; rotate + mirror westbound so it stays upright. */
+  transform: rotate(var(--bus-angle)) scaleX(var(--bus-flip));
 }
 
 .leaflet-popup-content {
