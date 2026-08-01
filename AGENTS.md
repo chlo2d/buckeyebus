@@ -72,3 +72,21 @@ Notes:
 - Tauri Linux builds need WebKit/GTK/glib devel packages; frontend-only `npm run dev` works without them.
 - Loading only selected routes breaks planning — startup should load **all** route details for the graph.
 - Itinerary IDs should stay stable across vehicle polls (don’t bake changing ETAs into IDs).
+
+## Cursor Cloud specific instructions
+
+These notes are specific to the Cursor Cloud VM (headless Ubuntu). See the sections above for
+commands, layout, APIs, and pitfalls; the following only adds cloud-specific caveats.
+
+- Node here is the preinstalled Node 22 on `PATH` (the `fnm` note above is for the maintainer's
+  local machine, not this VM). Rust is via `rustup`.
+- Rust toolchain must be `stable` (>= 1.85): some transitive Tauri crates require edition2024, so the
+  older 1.83 toolchain fails to parse dependency manifests. The default is set to `stable`; don't
+  switch it back.
+- Running the native app is headless: use `DISPLAY=:1 npm run tauri dev` so the window renders on the
+  GUI display `:1` that screen recording / computer-use can see. A harmless
+  `libEGL warning: ... DRI3 ...` line is expected on this GPU-less display.
+- `tauri dev` auto-starts Vite via its `beforeDevCommand`, and Vite uses `strictPort` on `1420`, so do
+  NOT also run a standalone `npm run dev` at the same time — the second one will fail to bind `1420`.
+- No ESLint config and no automated test suite exist; `npm run build` (`tsc && vite build`) is the
+  type-check gate.
