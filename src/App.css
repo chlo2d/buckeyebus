@@ -436,14 +436,45 @@ body {
 }
 
 .bus-marker-inner {
+  position: relative;
   display: grid;
   place-items: center;
   width: 40px;
   height: 40px;
-  font-size: 32px;
+  margin: 4px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 2.5px solid var(--bus-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+.bus-marker-dir {
+  position: absolute;
+  inset: -7px;
+  transform: rotate(var(--bus-heading));
+  pointer-events: none;
+}
+
+.bus-marker-arrow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 9px solid var(--bus-color);
+  transform: translateX(-50%);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+}
+
+.bus-marker-emoji {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-size: 28px;
   line-height: 1;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
-  /* 🚌 faces east by default; rotate + mirror westbound so it stays upright. */
+  /* Rotate + mirror westbound so the bus stays upright and faces travel. */
   transform: rotate(var(--bus-angle)) scaleX(var(--bus-flip));
 }
 

@@ -99,22 +99,24 @@ function MapClickHandler({
   return null;
 }
 
-/** Orient a right-facing 🚌 so it points along heading (0° = north). */
+/** Orient a 🚌 so it points along heading (0° = north). */
 function busOrientation(heading: number) {
   const h = ((heading % 360) + 360) % 360;
   // Mirror when westbound so the emoji stays upright instead of upside-down.
+  // +180 corrects the glyph's default facing (opposite of travel without it).
   const flip = h > 180;
-  const angle = flip ? h - 270 : h - 90;
+  const angle = (flip ? h - 270 : h - 90) + 180;
   return { angle, flip };
 }
 
-function busIcon(heading: number) {
-  const { angle, flip } = busOrientation(heading);
+function busIcon(color: string, heading: number) {
+  const h = ((heading % 360) + 360) % 360;
+  const { angle, flip } = busOrientation(h);
   return L.divIcon({
     className: "bus-marker",
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    html: `<div class="bus-marker-inner" style="--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true">🚌</div>`,
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
+    html: `<div class="bus-marker-inner" style="--bus-color:${color};--bus-heading:${h}deg;--bus-angle:${angle}deg;--bus-flip:${flip ? -1 : 1}" aria-hidden="true"><span class="bus-marker-dir"><span class="bus-marker-arrow"></span></span><span class="bus-marker-emoji">🚌</span></div>`,
   });
 }
 
@@ -326,11 +328,13 @@ export function BusMap({
         ))}
 
       {vehicles.map((vehicle) => {
+        const route = routeByCode.get(vehicle.routeCode);
+        const color = route?.color ?? "#ba0c2f";
         return (
           <Marker
             key={vehicle.bus_id || vehicle.id}
             position={[vehicle.latitude, vehicle.longitude]}
-            icon={busIcon(vehicle.heading || 0)}
+            icon={busIcon(color, vehicle.heading || 0)}
           >
             <Popup>
               <strong>{vehicle.id}</strong>
