@@ -7,7 +7,8 @@ import {
 } from "./geo";
 import {
   ACCESS_WALK_M,
-  estimateBoardingWaitMinutes,
+  estimateBoardingWait,
+  estimateRideMinutesFromPredictions,
   MAX_TRANSFERS,
   SNAP_STOP_M,
   TRANSFER_PENALTY_MIN,
@@ -43,6 +44,10 @@ export interface TripLeg {
   to: LatLng;
   /** Geometry for map drawing */
   path: LatLng[];
+  /** Minutes until the bus arrives at the boarding stop (ride legs) */
+  boardingWaitMinutes?: number;
+  /** Wait came from official live predictions */
+  liveBoarding?: boolean;
 }
 
 export interface Itinerary {
@@ -54,6 +59,10 @@ export interface Itinerary {
   transfers: number;
   summary: string;
   legs: TripLeg[];
+  /** First boarding uses live vehicle predictions */
+  liveTracked: boolean;
+  /** Clock time when the trip should arrive (ms since epoch) */
+  arrivalTimeMs: number;
 }
 
 interface SearchNode {
@@ -189,6 +198,8 @@ function walkOnlyItinerary(
     waitMinutes: 0,
     transfers: 0,
     summary: `Walk ${formatMinutes(minutes)}`,
+    liveTracked: false,
+    arrivalTimeMs: Date.now() + minutes * 60_000,
     legs: [
       {
         kind: "walk",
@@ -314,6 +325,7 @@ function searchBusItineraries(
           nextTransfers += 1;
           extra += TRANSFER_PENALTY_MIN;
         }
+        let rideMinutes = edge.minutes;
         if (!cur.boardedRoute || cur.boardedRoute !== edge.routeCode) {
           // Boarding wait when starting a ride or transferring onto a new route
           const boardingStop =
@@ -321,16 +333,40 @@ function searchBusItineraries(
               ? graph.stops.get(edge.fromStopId)
               : graph.stops.get(cur.nodeId);
           if (boardingStop && edge.routeCode) {
-            extra += estimateBoardingWaitMinutes(
+            const wait = estimateBoardingWait(
               edge.routeCode,
               boardingStop,
               vehicles,
+              graph,
+              cur.minutes,
             );
+            extra += wait.minutes;
+            if (wait.live && edge.fromStopId && edge.toStopId) {
+              rideMinutes = estimateRideMinutesFromPredictions(
+                vehicles,
+                wait.vehicleId,
+                edge.fromStopId,
+                edge.toStopId,
+                edge.minutes,
+              ).minutes;
+            }
           } else {
             extra += 5;
           }
         }
         nextBoarded = edge.routeCode ?? null;
+
+        if (nextTransfers > MAX_TRANSFERS) continue;
+
+        push({
+          nodeId: edge.to,
+          minutes: cur.minutes + rideMinutes + extra,
+          transfers: nextTransfers,
+          boardedRoute: nextBoarded,
+          via: edge,
+          prev: cur,
+        });
+        continue;
       } else if (edge.kind === "transfer") {
         nextBoarded = null;
         // walking between nearby stops between buses counts toward transfer limit only when coming from a ride
@@ -366,6 +402,7 @@ function searchBusItineraries(
       coords,
       origin,
       destination,
+      vehicles,
     );
     if (itin) itineraries.push(itin);
   }
@@ -405,6 +442,7 @@ function reconstruct(
   coords: Map<string, LatLng>,
   origin: TripPoint,
   destination: TripPoint,
+  vehicles: Vehicle[],
 ): Itinerary | null {
   const chain: { state: PathState; edge: GraphEdge }[] = [];
   let cur: PathState | null = goal;
@@ -416,6 +454,10 @@ function reconstruct(
   if (chain.length === 0) return null;
 
   const rawLegs: TripLeg[] = [];
+  let elapsedBeforeEdge = 0;
+  let boardedRoute: string | null = null;
+  let liveTracked = false;
+  let waitMinutesAccounted = 0;
 
   for (const { state, edge } of chain) {
     const fromId = state.prev!.nodeId;
@@ -435,10 +477,7 @@ function reconstruct(
         edge.toAlong != null &&
         edge.patternLength != null
       ) {
-        if (
-          edge.circular &&
-          edge.toAlong < edge.fromAlong
-        ) {
+        if (edge.circular && edge.toAlong < edge.fromAlong) {
           const a = slicePolylineByDistance(
             pattern.points,
             edge.fromAlong,
@@ -456,9 +495,48 @@ function reconstruct(
       }
 
       const route = routeByCode.get(edge.routeCode);
+      const isNewBoard =
+        !boardedRoute || boardedRoute !== edge.routeCode;
+      let boardingWaitMinutes: number | undefined;
+      let liveBoarding: boolean | undefined;
+      let rideMinutes = edge.minutes;
+
+      if (isNewBoard) {
+        const boardingStop =
+          edge.fromStopId != null
+            ? graph.stops.get(edge.fromStopId)
+            : graph.stops.get(fromId);
+        if (boardingStop) {
+          const wait = estimateBoardingWait(
+            edge.routeCode,
+            boardingStop,
+            vehicles,
+            graph,
+            elapsedBeforeEdge,
+          );
+          boardingWaitMinutes = wait.minutes;
+          liveBoarding = wait.live;
+          waitMinutesAccounted += wait.minutes;
+          if (wait.live) liveTracked = true;
+
+          if (wait.live && edge.fromStopId && edge.toStopId) {
+            const liveRide = estimateRideMinutesFromPredictions(
+              vehicles,
+              wait.vehicleId,
+              edge.fromStopId,
+              edge.toStopId,
+              edge.minutes,
+            );
+            if (liveRide.live) {
+              rideMinutes = liveRide.minutes;
+            }
+          }
+        }
+      }
+
       rawLegs.push({
         kind: "ride",
-        minutes: edge.minutes,
+        minutes: rideMinutes,
         distanceMeters: edge.distanceMeters,
         instruction: `Take ${edge.routeCode} to ${toLabel}`,
         routeCode: edge.routeCode,
@@ -469,7 +547,11 @@ function reconstruct(
         from,
         to,
         path: path.length >= 2 ? path : [from, to],
+        boardingWaitMinutes,
+        liveBoarding,
       });
+      boardedRoute = edge.routeCode;
+      elapsedBeforeEdge = state.minutes;
     } else {
       const isAccess =
         fromId === ORIGIN_ID ||
@@ -479,6 +561,7 @@ function reconstruct(
       if (!isAccess) continue;
       // Skip zero-length walks
       if (edge.distanceMeters < 12 && fromId !== ORIGIN_ID && toId !== DEST_ID) {
+        elapsedBeforeEdge = state.minutes;
         continue;
       }
       rawLegs.push({
@@ -497,6 +580,9 @@ function reconstruct(
         to,
         path: [from, to],
       });
+      if (edge.kind === "transfer") boardedRoute = null;
+      if (edge.to === DEST_ID) boardedRoute = null;
+      elapsedBeforeEdge = state.minutes;
     }
   }
 
@@ -515,7 +601,11 @@ function reconstruct(
     0,
     legs.filter((l) => l.kind === "ride").length - 1,
   );
-  const waitMinutes = Math.max(0, goal.minutes - walkMinutes - rideMinutes);
+  // Prefer summed live boarding waits; fall back to Dijkstra residual
+  const waitMinutes = Math.max(
+    waitMinutesAccounted,
+    Math.max(0, goal.minutes - walkMinutes - rideMinutes),
+  );
   const totalMinutes = goal.minutes;
 
   const rideCodes = legs
@@ -543,6 +633,8 @@ function reconstruct(
     transfers,
     summary,
     legs,
+    liveTracked,
+    arrivalTimeMs: Date.now() + totalMinutes * 60_000,
   };
 }
 
@@ -562,6 +654,7 @@ function mergeConsecutiveRides(legs: TripLeg[]): TripLeg[] {
       prev.distanceMeters += leg.distanceMeters;
       prev.path = [...prev.path, ...leg.path.slice(1)];
       prev.instruction = `Take ${prev.routeCode} to ${prev.toLabel}`;
+      // Keep boarding wait from the first segment of this continuous ride
       continue;
     }
     // Drop tiny walk between same-route rides that slipped through

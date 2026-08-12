@@ -254,25 +254,201 @@ export function nearestStops(
     .slice(0, limit);
 }
 
+export interface BoardingWaitEstimate {
+  minutes: number;
+  /** True when wait came from official vehicle stop predictions */
+  live: boolean;
+  vehicleId?: string;
+}
+
+/**
+ * Estimate wait at a boarding stop for `routeCode`.
+ * Prefers live vehicle predictions for that stop; falls back to along-route
+ * distance using the vehicle's pattern, then straight-line ETA.
+ *
+ * `arriveAtStopMinutes` is how many minutes from now the rider reaches the
+ * stop (0 for immediate boarding) so transfer waits pick the next bus after
+ * the rider arrives.
+ */
+export function estimateBoardingWait(
+  routeCode: string,
+  boardingStop: StopNode,
+  vehicles: Vehicle[],
+  graph?: TransitGraph,
+  arriveAtStopMinutes = 0,
+): BoardingWaitEstimate {
+  const relevant = vehicles.filter((v) => v.routeCode === routeCode);
+  if (relevant.length === 0) {
+    return { minutes: DEFAULT_WAIT_MIN, live: false };
+  }
+
+  const liveWait = waitFromPredictions(
+    boardingStop.id,
+    relevant,
+    arriveAtStopMinutes,
+  );
+  if (liveWait) return liveWait;
+
+  const geometric = waitFromGeometry(
+    boardingStop,
+    relevant,
+    graph,
+    arriveAtStopMinutes,
+  );
+  if (geometric) return geometric;
+
+  return { minutes: DEFAULT_WAIT_MIN, live: false };
+}
+
+/**
+ * Live ride duration between two stops from a vehicle's prediction list.
+ * Returns null when predictions for both stops are unavailable.
+ */
+export function estimateRideMinutesFromPredictions(
+  vehicles: Vehicle[],
+  vehicleId: string | undefined,
+  fromStopId: string,
+  toStopId: string,
+  fallbackMinutes: number,
+): { minutes: number; live: boolean } {
+  if (!vehicleId) return { minutes: fallbackMinutes, live: false };
+
+  const vehicle =
+    vehicles.find((v) => v.id === vehicleId || v.bus_id === vehicleId) ??
+    vehicles.find((v) =>
+      v.predictions?.some((p) => p.vehicleId === vehicleId),
+    );
+  if (!vehicle?.predictions?.length) {
+    return { minutes: fallbackMinutes, live: false };
+  }
+
+  const fromPred = vehicle.predictions.find((p) => p.stopId === fromStopId);
+  const toPred = vehicle.predictions.find((p) => p.stopId === toStopId);
+  if (
+    !fromPred ||
+    !toPred ||
+    typeof fromPred.timeToArrivalInSeconds !== "number" ||
+    typeof toPred.timeToArrivalInSeconds !== "number"
+  ) {
+    return { minutes: fallbackMinutes, live: false };
+  }
+
+  const rideSec =
+    toPred.timeToArrivalInSeconds - fromPred.timeToArrivalInSeconds;
+  if (rideSec < 30) return { minutes: fallbackMinutes, live: false };
+  return { minutes: rideSec / 60, live: true };
+}
+
+/** @deprecated Prefer estimateBoardingWait for live vs estimated metadata */
 export function estimateBoardingWaitMinutes(
   routeCode: string,
   boardingStop: StopNode,
   vehicles: Vehicle[],
+  arriveAtStopMinutes = 0,
+  graph?: TransitGraph,
 ): number {
-  const relevant = vehicles.filter((v) => v.routeCode === routeCode);
-  if (relevant.length === 0) return DEFAULT_WAIT_MIN;
+  return estimateBoardingWait(
+    routeCode,
+    boardingStop,
+    vehicles,
+    graph,
+    arriveAtStopMinutes,
+  ).minutes;
+}
 
-  let best = Infinity;
-  for (const vehicle of relevant) {
-    const d = haversineMeters(
-      { lat: vehicle.latitude, lng: vehicle.longitude },
-      { lat: boardingStop.lat, lng: boardingStop.lng },
-    );
-    // Rough: assume bus approaches at ~15 mph average including stops
-    const eta = minutesRiding(d, 15);
-    if (eta < best) best = eta;
+function waitFromPredictions(
+  stopId: string,
+  vehicles: Vehicle[],
+  arriveAtStopMinutes: number,
+): BoardingWaitEstimate | null {
+  let best: BoardingWaitEstimate | null = null;
+
+  for (const vehicle of vehicles) {
+    const preds = vehicle.predictions;
+    if (!preds?.length) continue;
+
+    for (const pred of preds) {
+      if (pred.stopId !== stopId) continue;
+      if (typeof pred.timeToArrivalInSeconds !== "number") continue;
+
+      const arrivalMin = pred.timeToArrivalInSeconds / 60;
+      // Bus that arrives before the rider gets to the stop is not usable
+      const wait = arrivalMin - arriveAtStopMinutes;
+      if (wait < -0.75) continue;
+
+      const minutes = Math.max(0, wait);
+      if (!best || minutes < best.minutes) {
+        best = {
+          minutes,
+          live: true,
+          vehicleId: pred.vehicleId || vehicle.id,
+        };
+      }
+    }
   }
 
-  if (!Number.isFinite(best)) return DEFAULT_WAIT_MIN;
-  return Math.max(1, Math.min(12, best));
+  return best;
+}
+
+function waitFromGeometry(
+  boardingStop: StopNode,
+  vehicles: Vehicle[],
+  graph: TransitGraph | undefined,
+  arriveAtStopMinutes: number,
+): BoardingWaitEstimate | null {
+  let best = Infinity;
+
+  for (const vehicle of vehicles) {
+    let etaMinutes: number | null = null;
+
+    if (graph && vehicle.patternId) {
+      const patternKey = `${vehicle.routeCode}:${vehicle.patternId}`;
+      const pattern = graph.patterns.get(patternKey);
+      if (pattern && pattern.points.length >= 2) {
+        const busProj = projectOntoPolyline(
+          { lat: vehicle.latitude, lng: vehicle.longitude },
+          pattern.points,
+        );
+        const stopProj = projectOntoPolyline(
+          { lat: boardingStop.lat, lng: boardingStop.lng },
+          pattern.points,
+        );
+        if (
+          busProj &&
+          stopProj &&
+          busProj.distanceToLine < 400 &&
+          stopProj.distanceToLine < 350
+        ) {
+          let along = stopProj.distanceAlong - busProj.distanceAlong;
+          if (along < 0) {
+            along = pattern.circular
+              ? pattern.lengthMeters + along
+              : NaN;
+          }
+          if (Number.isFinite(along) && along >= 0) {
+            // Campus average with dwell; slightly slower than in-motion ride speed
+            etaMinutes = minutesRiding(along, 14);
+          }
+        }
+      }
+    }
+
+    if (etaMinutes == null) {
+      const d = haversineMeters(
+        { lat: vehicle.latitude, lng: vehicle.longitude },
+        { lat: boardingStop.lat, lng: boardingStop.lng },
+      );
+      etaMinutes = minutesRiding(d, 15);
+    }
+
+    const wait = etaMinutes - arriveAtStopMinutes;
+    if (wait < -0.75) continue;
+    best = Math.min(best, Math.max(0, wait));
+  }
+
+  if (!Number.isFinite(best)) return null;
+  return {
+    minutes: Math.max(0.5, Math.min(18, best)),
+    live: false,
+  };
 }

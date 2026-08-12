@@ -118,6 +118,8 @@ export function TripPlanner({
         <ul className="itinerary-list">
           {itineraries.map((itin, index) => {
             const active = itin.id === selectedItineraryId;
+            const firstRide = itin.legs.find((l) => l.kind === "ride");
+            const boardWait = firstRide?.boardingWaitMinutes;
             return (
               <li key={itin.id}>
                 <button
@@ -138,9 +140,12 @@ export function TripPlanner({
                     {itin.transfers === 0
                       ? "Direct"
                       : `${itin.transfers} transfer${itin.transfers === 1 ? "" : "s"}`}
-                    {itin.waitMinutes >= 1
-                      ? ` · ~${Math.round(itin.waitMinutes)} min wait`
-                      : ""}
+                    {boardWait != null && boardWait >= 0.25
+                      ? ` · ${firstRide?.liveBoarding ? "Live" : "Est."} bus in ${formatWait(boardWait)}`
+                      : itin.waitMinutes >= 1
+                        ? ` · ~${Math.round(itin.waitMinutes)} min wait`
+                        : ""}
+                    {` · Arrive ${formatClock(itin.arrivalTimeMs)}`}
                   </p>
                   {active && (
                     <ol className="itinerary-steps">
@@ -154,8 +159,16 @@ export function TripPlanner({
                                   background: leg.routeColor ?? "#ba0c2f",
                                 }}
                               />
-                              Board <strong>{leg.routeCode}</strong> at{" "}
-                              {leg.fromLabel}, ride to {leg.toLabel}
+                              Board <strong>{leg.routeCode}</strong>
+                              {leg.boardingWaitMinutes != null ? (
+                                <>
+                                  {" "}
+                                  in {formatWait(leg.boardingWaitMinutes)}
+                                  {leg.liveBoarding ? " (live)" : ""}
+                                </>
+                              ) : null}{" "}
+                              at {leg.fromLabel}, ride{" "}
+                              {formatMinutes(leg.minutes)} to {leg.toLabel}
                             </>
                           ) : (
                             <>
@@ -252,6 +265,19 @@ function scoreMatch(
   const words = name.split(/[^a-z0-9]+/).filter(Boolean);
   if (words.some((w) => w.startsWith(query))) return 3.5;
   return null;
+}
+
+function formatWait(minutes: number): string {
+  if (minutes < 0.75) return "now";
+  if (minutes < 1.5) return "~1 min";
+  return `~${Math.round(minutes)} min`;
+}
+
+function formatClock(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function PlaceField({
