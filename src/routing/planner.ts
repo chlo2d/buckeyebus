@@ -8,7 +8,7 @@ import {
 import {
   ACCESS_WALK_M,
   estimateBoardingWait,
-  estimateRideMinutesFromPredictions,
+  estimateLiveRideSegment,
   MAX_TRANSFERS,
   SNAP_STOP_M,
   TRANSFER_PENALTY_MIN,
@@ -327,28 +327,39 @@ function searchBusItineraries(
         }
         let rideMinutes = edge.minutes;
         if (!cur.boardedRoute || cur.boardedRoute !== edge.routeCode) {
-          // Boarding wait when starting a ride or transferring onto a new route
+          // Boarding wait when starting a ride or transferring onto a new route.
+          // Prefer the live bus that arrives at the destination soonest (not
+          // just the first bus at the boarding stop — important on loop routes).
           const boardingStop =
             edge.fromStopId != null
               ? graph.stops.get(edge.fromStopId)
               : graph.stops.get(cur.nodeId);
           if (boardingStop && edge.routeCode) {
-            const wait = estimateBoardingWait(
-              edge.routeCode,
-              boardingStop,
-              vehicles,
-              graph,
-              cur.minutes,
-            );
-            extra += wait.minutes;
-            if (wait.live && edge.fromStopId && edge.toStopId) {
-              rideMinutes = estimateRideMinutesFromPredictions(
-                vehicles,
-                wait.vehicleId,
+            if (edge.fromStopId && edge.toStopId) {
+              const segment = estimateLiveRideSegment(
+                edge.routeCode,
                 edge.fromStopId,
                 edge.toStopId,
+                vehicles,
+                cur.minutes,
                 edge.minutes,
-              ).minutes;
+                graph,
+                boardingStop,
+              );
+              // Skip inactive routes when the live feed is available
+              if (segment.noService) continue;
+              extra += segment.waitMinutes;
+              rideMinutes = segment.rideMinutes;
+            } else {
+              const wait = estimateBoardingWait(
+                edge.routeCode,
+                boardingStop,
+                vehicles,
+                graph,
+                cur.minutes,
+              );
+              if (wait.noService) continue;
+              extra += wait.minutes;
             }
           } else {
             extra += 5;
@@ -507,29 +518,41 @@ function reconstruct(
             ? graph.stops.get(edge.fromStopId)
             : graph.stops.get(fromId);
         if (boardingStop) {
-          const wait = estimateBoardingWait(
-            edge.routeCode,
-            boardingStop,
-            vehicles,
-            graph,
-            elapsedBeforeEdge,
-          );
-          boardingWaitMinutes = wait.minutes;
-          liveBoarding = wait.live;
-          waitMinutesAccounted += wait.minutes;
-          if (wait.live) liveTracked = true;
-
-          if (wait.live && edge.fromStopId && edge.toStopId) {
-            const liveRide = estimateRideMinutesFromPredictions(
-              vehicles,
-              wait.vehicleId,
+          if (edge.fromStopId && edge.toStopId) {
+            const segment = estimateLiveRideSegment(
+              edge.routeCode,
               edge.fromStopId,
               edge.toStopId,
+              vehicles,
+              elapsedBeforeEdge,
               edge.minutes,
+              graph,
+              boardingStop,
             );
-            if (liveRide.live) {
-              rideMinutes = liveRide.minutes;
+            boardingWaitMinutes = segment.waitMinutes;
+            liveBoarding = segment.live;
+            waitMinutesAccounted += segment.waitMinutes;
+            // Mark tracked when this route has active buses (even if we fall
+            // back to geometry for ride length). Dead routes never reach here.
+            if (
+              segment.live ||
+              vehicles.some((v) => v.routeCode === edge.routeCode)
+            ) {
+              liveTracked = true;
             }
+            rideMinutes = segment.rideMinutes;
+          } else {
+            const wait = estimateBoardingWait(
+              edge.routeCode,
+              boardingStop,
+              vehicles,
+              graph,
+              elapsedBeforeEdge,
+            );
+            boardingWaitMinutes = wait.minutes;
+            liveBoarding = wait.live;
+            waitMinutesAccounted += wait.minutes;
+            if (wait.live) liveTracked = true;
           }
         }
       }
@@ -697,7 +720,11 @@ function dedupeItineraries(items: Itinerary[]): Itinerary[] {
         other.transfers < item.transfers,
     );
     const muchWorse =
-      kept[0] && item.totalMinutes > kept[0].totalMinutes * 1.6;
+      kept[0] &&
+      item.totalMinutes > kept[0].totalMinutes * 1.6 &&
+      // Keep a live-tracked bus option even when walking is much faster —
+      // riders still want the active-bus ETA, not a dead route.
+      !(item.liveTracked && !kept[0].liveTracked);
     if (dominated || muchWorse) continue;
     kept.push(item);
   }
@@ -723,6 +750,32 @@ function dedupeItineraries(items: Itinerary[]): Itinerary[] {
     if (duplicateRoutes) continue;
     result.push(item);
     if (result.length >= 3) break;
+  }
+
+  // Ensure at least one live-tracked bus itinerary survives when available
+  if (!result.some((r) => r.liveTracked)) {
+    const bestLive = unique
+      .filter((i) => i.liveTracked)
+      .sort((a, b) => a.totalMinutes - b.totalMinutes)[0];
+    if (bestLive) {
+      const withoutDup = result.filter(
+        (r) =>
+          r.legs
+            .filter((l) => l.routeCode)
+            .map((l) => l.routeCode)
+            .join(",") !==
+          bestLive.legs
+            .filter((l) => l.routeCode)
+            .map((l) => l.routeCode)
+            .join(","),
+      );
+      return [...withoutDup, bestLive]
+        .sort(
+          (a, b) =>
+            a.totalMinutes - b.totalMinutes || a.transfers - b.transfers,
+        )
+        .slice(0, 3);
+    }
   }
   return result;
 }

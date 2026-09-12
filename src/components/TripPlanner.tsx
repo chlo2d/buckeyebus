@@ -130,6 +130,11 @@ export function TripPlanner({
                   <div className="itinerary-top">
                     <span className="itinerary-rank">
                       {index === 0 ? "Fastest" : `Option ${index + 1}`}
+                      {itin.liveTracked ? (
+                        <span className="live-pill" title="Based on active buses">
+                          Live
+                        </span>
+                      ) : null}
                     </span>
                     <span className="itinerary-time">
                       {formatMinutes(itin.totalMinutes)}
@@ -140,8 +145,10 @@ export function TripPlanner({
                     {itin.transfers === 0
                       ? "Direct"
                       : `${itin.transfers} transfer${itin.transfers === 1 ? "" : "s"}`}
-                    {boardWait != null && boardWait >= 0.25
-                      ? ` · ${firstRide?.liveBoarding ? "Live" : "Est."} bus in ${formatWait(boardWait)}`
+                    {boardWait != null && boardWait >= 0
+                      ? firstRide?.liveBoarding
+                        ? ` · Bus in ${formatWait(boardWait)}`
+                        : ` · ~${formatWait(boardWait)} wait`
                       : itin.waitMinutes >= 1
                         ? ` · ~${Math.round(itin.waitMinutes)} min wait`
                         : ""}

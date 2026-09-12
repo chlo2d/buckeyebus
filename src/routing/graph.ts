@@ -12,6 +12,8 @@ export const TRANSFER_WALK_M = 150;
 export const ACCESS_WALK_M = 400;
 export const SNAP_STOP_M = 250;
 export const DEFAULT_WAIT_MIN = 5;
+/** Wait used when a route has no active vehicles but the live feed is up */
+export const NO_SERVICE_WAIT_MIN = 60;
 export const TRANSFER_PENALTY_MIN = 2;
 export const MAX_TRANSFERS = 2;
 
@@ -258,7 +260,19 @@ export interface BoardingWaitEstimate {
   minutes: number;
   /** True when wait came from official vehicle stop predictions */
   live: boolean;
+  /** True when the route has no vehicles in the live feed */
+  noService?: boolean;
   vehicleId?: string;
+}
+
+export interface LiveRideSegmentEstimate {
+  waitMinutes: number;
+  rideMinutes: number;
+  live: boolean;
+  noService: boolean;
+  vehicleId?: string;
+  /** Minutes from now until the bus reaches the alighting stop */
+  arrivalMinutes?: number;
 }
 
 /**
@@ -269,6 +283,9 @@ export interface BoardingWaitEstimate {
  * `arriveAtStopMinutes` is how many minutes from now the rider reaches the
  * stop (0 for immediate boarding) so transfer waits pick the next bus after
  * the rider arrives.
+ *
+ * When the live feed has vehicles but none on this route, returns a large
+ * no-service wait so inactive routes are not preferred over running buses.
  */
 export function estimateBoardingWait(
   routeCode: string,
@@ -279,6 +296,9 @@ export function estimateBoardingWait(
 ): BoardingWaitEstimate {
   const relevant = vehicles.filter((v) => v.routeCode === routeCode);
   if (relevant.length === 0) {
+    if (vehicles.length > 0) {
+      return { minutes: NO_SERVICE_WAIT_MIN, live: false, noService: true };
+    }
     return { minutes: DEFAULT_WAIT_MIN, live: false };
   }
 
@@ -298,6 +318,100 @@ export function estimateBoardingWait(
   if (geometric) return geometric;
 
   return { minutes: DEFAULT_WAIT_MIN, live: false };
+}
+
+/**
+ * Pick the active bus that gets the rider from `fromStopId` to `toStopId`
+ * soonest (destination arrival), not merely the first bus at the boarding
+ * stop. On loop routes the soonest boarding bus can be the long way around.
+ */
+export function estimateLiveRideSegment(
+  routeCode: string,
+  fromStopId: string,
+  toStopId: string,
+  vehicles: Vehicle[],
+  arriveAtStopMinutes: number,
+  fallbackRideMinutes: number,
+  graph?: TransitGraph,
+  boardingStop?: StopNode,
+): LiveRideSegmentEstimate {
+  const relevant = vehicles.filter((v) => v.routeCode === routeCode);
+  if (relevant.length === 0) {
+    if (vehicles.length > 0) {
+      return {
+        waitMinutes: NO_SERVICE_WAIT_MIN,
+        rideMinutes: fallbackRideMinutes,
+        live: false,
+        noService: true,
+      };
+    }
+    return {
+      waitMinutes: DEFAULT_WAIT_MIN,
+      rideMinutes: fallbackRideMinutes,
+      live: false,
+      noService: false,
+    };
+  }
+
+  let best: LiveRideSegmentEstimate | null = null;
+
+  for (const vehicle of relevant) {
+    const preds = vehicle.predictions;
+    if (!preds?.length) continue;
+
+    const fromPred = preds.find((p) => p.stopId === fromStopId);
+    const toPred = preds.find((p) => p.stopId === toStopId);
+    if (
+      !fromPred ||
+      !toPred ||
+      typeof fromPred.timeToArrivalInSeconds !== "number" ||
+      typeof toPred.timeToArrivalInSeconds !== "number"
+    ) {
+      continue;
+    }
+
+    const boardMin = fromPred.timeToArrivalInSeconds / 60;
+    const alightMin = toPred.timeToArrivalInSeconds / 60;
+    // Need boarding at/after the rider arrives, and alighting after boarding
+    if (boardMin < arriveAtStopMinutes - 0.75) continue;
+    if (alightMin - boardMin < 0.5) continue;
+
+    const waitMinutes = Math.max(0, boardMin - arriveAtStopMinutes);
+    const rideMinutes = alightMin - boardMin;
+    const arrivalMinutes = alightMin;
+
+    if (
+      !best ||
+      (arrivalMinutes ?? Infinity) < (best.arrivalMinutes ?? Infinity) ||
+      (arrivalMinutes === best.arrivalMinutes &&
+        waitMinutes < best.waitMinutes)
+    ) {
+      best = {
+        waitMinutes,
+        rideMinutes,
+        live: true,
+        noService: false,
+        vehicleId: fromPred.vehicleId || vehicle.id,
+        arrivalMinutes,
+      };
+    }
+  }
+
+  if (best) return best;
+
+  // No vehicle predicts both stops in order. Do NOT pair a soonest-boarding
+  // live wait with a short geometric ride — that invents a trip the bus is
+  // not actually making. Use a generic wait + geometric ride instead.
+  const geometric = boardingStop
+    ? waitFromGeometry(boardingStop, relevant, graph, arriveAtStopMinutes)
+    : null;
+
+  return {
+    waitMinutes: geometric?.minutes ?? DEFAULT_WAIT_MIN,
+    rideMinutes: fallbackRideMinutes,
+    live: false,
+    noService: false,
+  };
 }
 
 /**

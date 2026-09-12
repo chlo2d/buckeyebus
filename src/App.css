@@ -251,6 +251,21 @@ body {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--scarlet);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.live-pill {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--scarlet) 12%, transparent);
+  color: var(--scarlet);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
 .itinerary-time {
