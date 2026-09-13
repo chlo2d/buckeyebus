@@ -9,6 +9,7 @@ import {
   ACCESS_WALK_M,
   estimateBoardingWait,
   estimateLiveRideSegment,
+  estimateRideMinutesFromPredictions,
   MAX_TRANSFERS,
   SNAP_STOP_M,
   TRANSFER_PENALTY_MIN,
@@ -78,6 +79,8 @@ interface PathState {
   minutes: number;
   transfers: number;
   boardedRoute: string | null;
+  /** Vehicle chosen at boarding; keeps later hop costs on the same bus */
+  vehicleId: string | null;
   via: GraphEdge | null;
   prev: PathState | null;
 }
@@ -286,7 +289,7 @@ function searchBusItineraries(
   const goals: PathState[] = [];
 
   const push = (state: PathState) => {
-    const key = `${state.nodeId}|${state.transfers}|${state.boardedRoute ?? ""}`;
+    const key = `${state.nodeId}|${state.transfers}|${state.boardedRoute ?? ""}|${state.vehicleId ?? ""}`;
     const prevBest = best.get(key);
     if (prevBest !== undefined && prevBest <= state.minutes) return;
     best.set(key, state.minutes);
@@ -298,6 +301,7 @@ function searchBusItineraries(
     minutes: 0,
     transfers: 0,
     boardedRoute: null,
+    vehicleId: null,
     via: null,
     prev: null,
   });
@@ -305,7 +309,7 @@ function searchBusItineraries(
   while (heap.length > 0) {
     heap.sort((a, b) => a.minutes - b.minutes);
     const cur = heap.shift()!;
-    const key = `${cur.nodeId}|${cur.transfers}|${cur.boardedRoute ?? ""}`;
+    const key = `${cur.nodeId}|${cur.transfers}|${cur.boardedRoute ?? ""}|${cur.vehicleId ?? ""}`;
     if ((best.get(key) ?? Infinity) < cur.minutes) continue;
 
     if (cur.nodeId === DEST_ID) {
@@ -326,6 +330,7 @@ function searchBusItineraries(
           extra += TRANSFER_PENALTY_MIN;
         }
         let rideMinutes = edge.minutes;
+        let nextVehicleId = cur.vehicleId;
         if (!cur.boardedRoute || cur.boardedRoute !== edge.routeCode) {
           // Boarding wait when starting a ride or transferring onto a new route.
           // Prefer the live bus that arrives at the destination soonest (not
@@ -350,6 +355,7 @@ function searchBusItineraries(
               if (segment.noService) continue;
               extra += segment.waitMinutes;
               rideMinutes = segment.rideMinutes;
+              nextVehicleId = segment.vehicleId ?? null;
             } else {
               const wait = estimateBoardingWait(
                 edge.routeCode,
@@ -360,10 +366,22 @@ function searchBusItineraries(
               );
               if (wait.noService) continue;
               extra += wait.minutes;
+              nextVehicleId = wait.vehicleId ?? null;
             }
           } else {
             extra += 5;
+            nextVehicleId = null;
           }
+        } else if (cur.vehicleId && edge.fromStopId && edge.toStopId) {
+          // Already on this bus — keep hop times aligned to that vehicle.
+          rideMinutes = estimateRideMinutesFromPredictions(
+            vehicles,
+            cur.vehicleId,
+            edge.fromStopId,
+            edge.toStopId,
+            edge.minutes,
+            graph,
+          ).minutes;
         }
         nextBoarded = edge.routeCode ?? null;
 
@@ -374,6 +392,7 @@ function searchBusItineraries(
           minutes: cur.minutes + rideMinutes + extra,
           transfers: nextTransfers,
           boardedRoute: nextBoarded,
+          vehicleId: nextVehicleId,
           via: edge,
           prev: cur,
         });
@@ -397,6 +416,7 @@ function searchBusItineraries(
         minutes: cur.minutes + edge.minutes + extra,
         transfers: nextTransfers,
         boardedRoute: nextBoarded,
+        vehicleId: null,
         via: edge,
         prev: cur,
       });
