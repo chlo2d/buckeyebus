@@ -33,6 +33,23 @@ export interface RouteDetail {
   stops: Stop[];
 }
 
+export interface VehiclePrediction {
+  routeCode: string;
+  routeColor: string;
+  darkColor: string;
+  predictionCountdown: string;
+  predictionTime: string;
+  timeToArrivalInSeconds: number;
+  destination: string;
+  stopId: string;
+  stopName: string;
+  type: string;
+  systemTime: string;
+  vehicleId: string;
+  vehicleDistanceInFeet: number;
+  isDelayed: boolean;
+}
+
 export interface Vehicle {
   routeCode: string;
   distance: number;
@@ -43,11 +60,13 @@ export interface Vehicle {
   delayed: boolean;
   speed: number;
   service: string;
-  lastStop: string;
+  lastStop: string | null;
   id: string;
-  bus_id: string;
+  bus_id: string | null;
   updated: string;
   longitude: number;
+  /** Official next-stop ETAs from the live vehicle feed */
+  predictions?: VehiclePrediction[];
 }
 
 export interface RoutesResponse {
